@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang='en'>
+
+<head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <title>Canvas</title>
+    <link rel='stylesheet' href='style.css'>
+</head>
+
+<body>
+    <div class="formulari" id="loginFormWrapper">
+        <form id="loginForm">
+            <h2>Iniciar Sessió</h2>
+            <label for="name">Nom:</label>
+            <input type="text" id="name" name="name" placeholder="Ex: Paco" required>
+            <br><br>
+            <button type="submit">Iniciar</button><br><br>
+        </form>
+    </div>
+
+    <div class="canvas" id="canvasSection">
+        <h2>Canvas</h2>
+        <p>Benvingut, <span id="userName"></span>!</p>
+        <canvas id="myCanvas" width="800" height="600"
+            style="border:1px solid #000000; background-color: #337c3c;"></canvas>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const loginForm = document.getElementById('loginForm');
+        const loginFormWrapper = document.getElementById('loginFormWrapper');
+        const canvasSection = document.getElementById('canvasSection');
+        const userName = document.getElementById('userName');
+        const canvas = document.getElementById('myCanvas');
+        const ctx = canvas.getContext('2d');
+        const socket = io();
+        const remoteUsers = new Map();
+
+        loginForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+
+            const name = document.getElementById('name').value.trim();
+
+            if (!name) {
+                alert('Escriu el teu nom per continuar.');
+                return;
+            }
+
+            userName.textContent = name;
+            loginFormWrapper.style.display = 'none';
+            canvasSection.style.display = 'block';
+            socket.emit('register-user', { name });
+        });
+
+        function drawCursor(x, y, color = '#ff0000', label = 'Usuari') {
+            ctx.beginPath();
+            ctx.arc(x, y, 8, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+
+            ctx.fillStyle = '#000';
+            ctx.font = '12px sans-serif';
+            ctx.fillText(label, x + 12, y - 12);
+        }
+
+        function renderCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#337c3c';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            remoteUsers.forEach((user) => {
+                drawCursor(user.x, user.y, '#ff0000', user.name);
+            });
+        }
+
+        socket.on('users-list', (users) => {
+            users.forEach((user) => {
+                remoteUsers.set(user.id, user);
+            });
+            renderCanvas();
+        });
+
+        socket.on('user-connected', (user) => {
+            remoteUsers.set(user.id, user);
+            renderCanvas();
+        });
+
+        socket.on('user-disconnected', ({ id }) => {
+            remoteUsers.delete(id);
+            renderCanvas();
+        });
+
+        socket.on('cursor-move', ({ id, x, y }) => {
+            const user = remoteUsers.get(id);
+            if (!user) {
+                remoteUsers.set(id, { id, name: 'Usuari', x, y });
+            } else {
+                user.x = x;
+                user.y = y;
+            }
+            renderCanvas();
+        });
+
+        canvas.addEventListener('mousemove', (event) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
+            const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+
+            socket.emit('cursor-move', { x, y });
+        });
+
+        renderCanvas();
+    </script>
+</body>
+
+</html>
