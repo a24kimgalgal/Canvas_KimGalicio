@@ -36,6 +36,13 @@
         const ctx = canvas.getContext('2d');
         const socket = io();
         const remoteUsers = new Map();
+        const localUser = {
+            name: '',
+            x: 0,
+            y: 0,
+            drawing: false,
+            points: []
+        };
 
         loginForm.addEventListener('submit', (event) => {
             event.preventDefault();
@@ -47,11 +54,19 @@
                 return;
             }
 
+            localUser.name = name;
             userName.textContent = name;
             loginFormWrapper.style.display = 'none';
             canvasSection.style.display = 'block';
             socket.emit('register-user', { name });
         });
+
+        function getCanvasCoordinates(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
+            const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+            return { x, y };
+        }
 
         function drawCursor(x, y, color = '#ff0000', label = 'Usuari') {
             ctx.beginPath();
@@ -64,6 +79,25 @@
             ctx.fillText(label, x + 12, y - 12);
         }
 
+        function drawLine(points, color = '#ffffff') {
+            if (points.length < 2) {
+                return;
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+
+            for (let i = 1; i < points.length; i++) {
+                ctx.lineTo(points[i].x, points[i].y);
+            }
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+        }
+
         function renderCanvas() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#337c3c';
@@ -72,23 +106,33 @@
             remoteUsers.forEach((user) => {
                 drawCursor(user.x, user.y, '#ff0000', user.name);
             });
+
+            if (localUser.points.length > 0) {
+                drawLine(localUser.points, '#ffffff');
+            }
+
+            if (localUser.name) {
+                drawCursor(localUser.x, localUser.y, '#ffffff', localUser.name);
+            }
+        }
+
+        function animate() {
+            renderCanvas();
+            requestAnimationFrame(animate);
         }
 
         socket.on('users-list', (users) => {
             users.forEach((user) => {
                 remoteUsers.set(user.id, user);
             });
-            renderCanvas();
         });
 
         socket.on('user-connected', (user) => {
             remoteUsers.set(user.id, user);
-            renderCanvas();
         });
 
         socket.on('user-disconnected', ({ id }) => {
             remoteUsers.delete(id);
-            renderCanvas();
         });
 
         socket.on('cursor-move', ({ id, x, y }) => {
@@ -99,18 +143,37 @@
                 user.x = x;
                 user.y = y;
             }
-            renderCanvas();
+        });
+
+        canvas.addEventListener('mousedown', (event) => {
+            const { x, y } = getCanvasCoordinates(event);
+            localUser.drawing = true;
+            localUser.x = x;
+            localUser.y = y;
+            localUser.points.push({ x, y });
         });
 
         canvas.addEventListener('mousemove', (event) => {
-            const rect = canvas.getBoundingClientRect();
-            const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
-            const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+            const { x, y } = getCanvasCoordinates(event);
+            localUser.x = x;
+            localUser.y = y;
+
+            if (localUser.drawing) {
+                localUser.points.push({ x, y });
+            }
 
             socket.emit('cursor-move', { x, y });
         });
 
-        renderCanvas();
+        canvas.addEventListener('mouseup', () => {
+            localUser.drawing = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            localUser.drawing = false;
+        });
+
+        requestAnimationFrame(animate);
     </script>
 </body>
 
