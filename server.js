@@ -50,7 +50,7 @@ io.on('connection', (socket) => {
 
         if (user) {
             socket.broadcast.emit('user-disconnected', { id: socket.id, name: user.name });
-        }
+        }             
 
         console.log(`Cliente desconectado: ${socket.id}`);
     });

@@ -41,7 +41,8 @@
             x: 0,
             y: 0,
             drawing: false,
-            points: []
+            currentStroke: [],
+            strokes: []
         };
 
         loginForm.addEventListener('submit', (event) => {
@@ -98,6 +99,13 @@
             ctx.stroke();
         }
 
+        function commitCurrentStroke() {
+            if (localUser.currentStroke.length > 0) {
+                localUser.strokes.push([...localUser.currentStroke]);
+                localUser.currentStroke = [];
+            }
+        }
+
         function renderCanvas() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#337c3c';
@@ -107,8 +115,12 @@
                 drawCursor(user.x, user.y, '#ff0000', user.name);
             });
 
-            if (localUser.points.length > 0) {
-                drawLine(localUser.points, '#ffffff');
+            localUser.strokes.forEach((stroke) => {
+                drawLine(stroke, '#ffffff');
+            });
+
+            if (localUser.currentStroke.length > 0) {
+                drawLine(localUser.currentStroke, '#ffffff');
             }
 
             if (localUser.name) {
@@ -147,10 +159,11 @@
 
         canvas.addEventListener('mousedown', (event) => {
             const { x, y } = getCanvasCoordinates(event);
+            commitCurrentStroke();
             localUser.drawing = true;
             localUser.x = x;
             localUser.y = y;
-            localUser.points.push({ x, y });
+            localUser.currentStroke.push({ x, y });
         });
 
         canvas.addEventListener('mousemove', (event) => {
@@ -159,18 +172,24 @@
             localUser.y = y;
 
             if (localUser.drawing) {
-                localUser.points.push({ x, y });
+                localUser.currentStroke.push({ x, y });
             }
 
             socket.emit('cursor-move', { x, y });
         });
 
         canvas.addEventListener('mouseup', () => {
-            localUser.drawing = false;
+            if (localUser.drawing) {
+                commitCurrentStroke();
+                localUser.drawing = false;
+            }
         });
 
         canvas.addEventListener('mouseleave', () => {
-            localUser.drawing = false;
+            if (localUser.drawing) {
+                commitCurrentStroke();
+                localUser.drawing = false;
+            }
         });
 
         requestAnimationFrame(animate);
