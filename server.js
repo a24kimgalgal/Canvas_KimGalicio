@@ -7,7 +7,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-const PORT = 7070;
+const PORT = 406001;
 const users = new Map();
 
 function getUsersList() {
