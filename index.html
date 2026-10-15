@@ -19,9 +19,17 @@
     </div>
 
     <div id="canvasSection" class="hidden">
-        <h2>Canvas compartido</h2>
-        <p>Bienvenido, <span id="userName"></span></p>
-        <canvas id="myCanvas" width="800" height="600"></canvas>
+        <div class="canvas-shell">
+            <div class="topbar">
+                <div>
+                    <p class="eyebrow">Sala compartida</p>
+                    <h2>Canvas compartido</h2>
+                </div>
+                <span class="status-badge">En línea</span>
+            </div>
+            <p class="welcome">Bienvenido, <span id="userName"></span></p>
+            <canvas id="myCanvas" width="800" height="600"></canvas>
+        </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -43,6 +51,20 @@
             currentStroke: [],
             strokes: []
         };
+        let cursorEmitTimer = null;
+        let lastCursorPosition = null;
+
+        function emitCursorPosition() {
+            const payload = { x: localUser.x, y: localUser.y };
+            lastCursorPosition = payload;
+
+            if (cursorEmitTimer) return;
+
+            cursorEmitTimer = setTimeout(() => {
+                socket.emit('cursor-move', lastCursorPosition);
+                cursorEmitTimer = null;
+            }, 30);
+        }
 
         function showCanvas() {
             loginFormWrapper.classList.add('hidden');
@@ -197,7 +219,9 @@
                 localUser.currentStroke.push({ x, y });
             }
 
-            socket.emit('cursor-move', { x, y });
+            if (localUser.name) {
+                emitCursorPosition();
+            }
         });
 
         canvas.addEventListener('mouseup', () => {
