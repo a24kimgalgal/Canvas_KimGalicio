@@ -1,29 +1,27 @@
 <!DOCTYPE html>
-<html lang='en'>
+<html lang="es">
 
 <head>
-    <meta charset='utf-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1'>
-    <title>Canvas</title>
-    <link rel='stylesheet' href='style.css'>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas compartido</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-    <div class="formulari" id="loginFormWrapper">
+    <div id="loginFormWrapper" class="panel">
         <form id="loginForm">
-            <h2>Iniciar Sessió</h2>
-            <label for="name">Nom:</label>
-            <input type="text" id="name" name="name" placeholder="Ex: Paco" required>
-            <br><br>
-            <button type="submit">Iniciar</button><br><br>
+            <h2>Iniciar sesión</h2>
+            <label for="name">Nombre</label>
+            <input id="name" type="text" placeholder="Ej: Paco" required>
+            <button type="submit">Entrar</button>
         </form>
     </div>
 
-    <div class="canvas" id="canvasSection">
-        <h2>Canvas</h2>
-        <p>Benvingut, <span id="userName"></span>!</p>
-        <canvas id="myCanvas" width="800" height="600"
-            style="border:1px solid #000000; background-color: #337c3c;"></canvas>
+    <div id="canvasSection" class="hidden">
+        <h2>Canvas compartido</h2>
+        <p>Bienvenido, <span id="userName"></span></p>
+        <canvas id="myCanvas" width="800" height="600"></canvas>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -35,6 +33,7 @@
         const canvas = document.getElementById('myCanvas');
         const ctx = canvas.getContext('2d');
         const socket = io();
+
         const remoteUsers = new Map();
         const localUser = {
             name: '',
@@ -45,22 +44,10 @@
             strokes: []
         };
 
-        loginForm.addEventListener('submit', (event) => {
-            event.preventDefault();
-
-            const name = document.getElementById('name').value.trim();
-
-            if (!name) {
-                alert('Escriu el teu nom per continuar.');
-                return;
-            }
-
-            localUser.name = name;
-            userName.textContent = name;
-            loginFormWrapper.style.display = 'none';
-            canvasSection.style.display = 'block';
-            socket.emit('register-user', { name });
-        });
+        function showCanvas() {
+            loginFormWrapper.classList.add('hidden');
+            canvasSection.classList.remove('hidden');
+        }
 
         function getCanvasCoordinates(event) {
             const rect = canvas.getBoundingClientRect();
@@ -69,21 +56,19 @@
             return { x, y };
         }
 
-        function drawCursor(x, y, color = '#ff0000', label = 'Usuari') {
+        function drawCursor(x, y, color, label) {
             ctx.beginPath();
             ctx.arc(x, y, 8, 0, Math.PI * 2);
             ctx.fillStyle = color;
             ctx.fill();
 
-            ctx.fillStyle = '#000';
+            ctx.fillStyle = '#111';
             ctx.font = '12px sans-serif';
             ctx.fillText(label, x + 12, y - 12);
         }
 
         function drawLine(points, color = '#ffffff') {
-            if (points.length < 2) {
-                return;
-            }
+            if (points.length < 2) return;
 
             ctx.beginPath();
             ctx.moveTo(points[0].x, points[0].y);
@@ -99,25 +84,29 @@
             ctx.stroke();
         }
 
-        function commitCurrentStroke() {
-            if (localUser.currentStroke.length > 0) {
-                localUser.strokes.push([...localUser.currentStroke]);
+        function finishStroke() {
+            if (localUser.currentStroke.length < 2) {
                 localUser.currentStroke = [];
+                return;
             }
+
+            const stroke = [...localUser.currentStroke];
+            localUser.strokes.push(stroke);
+            socket.emit('drawing', stroke);
+            localUser.currentStroke = [];
         }
 
         function renderCanvas() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#337c3c';
+            ctx.fillStyle = '#2f6f43';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             remoteUsers.forEach((user) => {
-                drawCursor(user.x, user.y, '#ff0000', user.name);
+                user.strokes.forEach((stroke) => drawLine(stroke, '#ffffff'));
+                drawCursor(user.x, user.y, '#ff4d4d', user.name);
             });
 
-            localUser.strokes.forEach((stroke) => {
-                drawLine(stroke, '#ffffff');
-            });
+            localUser.strokes.forEach((stroke) => drawLine(stroke, '#ffffff'));
 
             if (localUser.currentStroke.length > 0) {
                 drawLine(localUser.currentStroke, '#ffffff');
@@ -133,14 +122,37 @@
             requestAnimationFrame(animate);
         }
 
+        loginForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+
+            const name = document.getElementById('name').value.trim();
+            if (!name) {
+                alert('Escribe tu nombre para continuar.');
+                return;
+            }
+
+            localUser.name = name;
+            userName.textContent = name;
+            showCanvas();
+            socket.emit('register-user', { name });
+        });
+
         socket.on('users-list', (users) => {
             users.forEach((user) => {
-                remoteUsers.set(user.id, user);
+                if (user.id !== socket.id) {
+                    remoteUsers.set(user.id, {
+                        ...user,
+                        strokes: []
+                    });
+                }
             });
         });
 
         socket.on('user-connected', (user) => {
-            remoteUsers.set(user.id, user);
+            remoteUsers.set(user.id, {
+                ...user,
+                strokes: []
+            });
         });
 
         socket.on('user-disconnected', ({ id }) => {
@@ -150,20 +162,30 @@
         socket.on('cursor-move', ({ id, x, y }) => {
             const user = remoteUsers.get(id);
             if (!user) {
-                remoteUsers.set(id, { id, name: 'Usuari', x, y });
-            } else {
-                user.x = x;
-                user.y = y;
+                remoteUsers.set(id, { id, name: 'Usuario', x, y, strokes: [] });
+                return;
             }
+
+            user.x = x;
+            user.y = y;
+        });
+
+        socket.on('drawing', ({ id, stroke }) => {
+            const user = remoteUsers.get(id);
+            if (!user) {
+                remoteUsers.set(id, { id, name: 'Usuario', x: 0, y: 0, strokes: [stroke] });
+                return;
+            }
+
+            user.strokes.push(stroke);
         });
 
         canvas.addEventListener('mousedown', (event) => {
             const { x, y } = getCanvasCoordinates(event);
-            commitCurrentStroke();
             localUser.drawing = true;
             localUser.x = x;
             localUser.y = y;
-            localUser.currentStroke.push({ x, y });
+            localUser.currentStroke = [{ x, y }];
         });
 
         canvas.addEventListener('mousemove', (event) => {
@@ -180,14 +202,14 @@
 
         canvas.addEventListener('mouseup', () => {
             if (localUser.drawing) {
-                commitCurrentStroke();
+                finishStroke();
                 localUser.drawing = false;
             }
         });
 
         canvas.addEventListener('mouseleave', () => {
             if (localUser.drawing) {
-                commitCurrentStroke();
+                finishStroke();
                 localUser.drawing = false;
             }
         });

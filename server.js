@@ -5,14 +5,14 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-    connectionStateRecovery: {
-        maxDisconnectionDuration: 2 * 60 * 1000,
-    },
-});
+const io = new Server(server);
 
-const port = 7070;
-const cursorBySocket = new Map();
+const PORT = 7070;
+const users = new Map();
+
+function getUsersList() {
+    return Array.from(users.values());
+}
 
 app.use(express.static(path.join(__dirname)));
 
@@ -21,41 +21,61 @@ app.get('/', (req, res) => {
 });
 
 io.on('connection', (socket) => {
-    console.log(`Cliente conectado: ${socket.id}`);
+    console.log('Cliente conectado:', socket.id);
 
     socket.on('register-user', ({ name }) => {
-        cursorBySocket.set(socket.id, {
+        const user = {
             id: socket.id,
             name: name || 'Anònim',
             x: 0,
             y: 0,
-        });
+            strokes: []
+        };
 
-        socket.emit('users-list', Array.from(cursorBySocket.values()));
-        socket.broadcast.emit('user-connected', cursorBySocket.get(socket.id));
+        users.set(socket.id, user);
+
+        socket.emit('users-list', getUsersList());
+        socket.broadcast.emit('user-connected', user);
     });
 
     socket.on('cursor-move', ({ x, y }) => {
-        const user = cursorBySocket.get(socket.id);
+        const user = users.get(socket.id);
         if (!user) return;
 
         user.x = x;
         user.y = y;
-        socket.broadcast.emit('cursor-move', { id: socket.id, x, y });
+
+        socket.broadcast.emit('cursor-move', {
+            id: socket.id,
+            x,
+            y
+        });
+    });
+
+    socket.on('drawing', (stroke) => {
+        if (!Array.isArray(stroke) || stroke.length === 0) return;
+
+        socket.broadcast.emit('drawing', {
+            id: socket.id,
+            stroke
+        });
     });
 
     socket.on('disconnect', () => {
-        const user = cursorBySocket.get(socket.id);
-        cursorBySocket.delete(socket.id);
+        const user = users.get(socket.id);
+        users.delete(socket.id);
 
         if (user) {
-            socket.broadcast.emit('user-disconnected', { id: socket.id, name: user.name });
-        }             
+            socket.broadcast.emit('user-disconnected', {
+                id: socket.id,
+                name: user.name
+            });
+        }
 
-        console.log(`Cliente desconectado: ${socket.id}`);
+        console.log('Cliente desconectado:', socket.id);
     });
 });
 
-server.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
+server.listen(PORT, () => {
+    console.log(`Servidor escuchando en el puerto ${PORT}`);
 });
